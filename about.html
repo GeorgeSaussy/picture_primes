@@ -36,12 +36,16 @@
         </h3>
         <p>
           I was on Hacker News earlier this week and saw this comment:
+        </p>
           <blockquote class="twitter-tweet" data-lang="en"><p lang="en" dir="ltr">“Does there exist a prime number whose representation on a phone screen looks like a giraffe?”<a href="https://t.co/YKklFj3MSp">https://t.co/YKklFj3MSp</a> <a href="https://t.co/8OJHhCu7Qh">pic.twitter.com/8OJHhCu7Qh</a></p>&mdash; Quentin Zervaas (@qzervaas) <a href="https://twitter.com/qzervaas/status/954660224782057472?ref_src=twsrc%5Etfw">January 20, 2018</a></blockquote>
 <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
-        </p>
         <p>
-          If you follow the link, it will take you to a Reddit post, where a user was prompted to find such a prime by a joke in a web comic. 
-          First, I wanted to figure out a way to find such a prime for any given image, and then to build a web app that would do exactly that. 
+          If you follow the link, it will take you to a Reddit post, where a user <a href="https://www.reddit.com/user/zhbrui">/u/zhbrui</a> was prompted to find such a prime by a joke in a web comic. 
+          First, I wanted to figure out a way to find such a prime for any given image, and then to build a web app that would do exactly that.
+        </p>  
+        <img src="assets/comic.jpg"></img>
+        <p> 
+          The original comic is by <a href="https://mathwithbaddrawings.com/">Ben Orlin</a>.
         </p>
         <h3>
           How does it work? 
@@ -55,6 +59,114 @@
           Then, numbers between the number and the number plus 2^32 are guess and tested for primality. 
           Primality is checked using the Miller Rabin primality test.
           When a prime is found, the number is reported back to the user.
+        </p>
+        <p>
+          Specifically, let the number represented by the binary string after setting the initial bit to 1 and the final bits to 0 be defined as <code>n</code>. 
+          Then we are looking for a number in the range <code>{n,n+1,...,n+2^32-1}</code>.
+          We know prime are pretty dense so we can just guess numbers in that range and test each on for primality. So a short Python program that would solve this would look like:<br/>
+          <div class="well">
+            <code>
+              #!/usr/bin/python<br/>
+              import random<br/>
+              <br/>
+              def prime_in_range(n1, n2):<br/>
+              &nbsp;&nbsp;ret = -1<br/>
+              &nbsp;&nbsp;max_guesses = get_max_guesses(n1, n2)</br>
+              &nbsp;&nbsp;num_tries = 0</br>
+              &nbsp;&nbsp;done = False</br>
+              &nbsp;&nbsp;while not done:</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;guess = random.randrange(n1, n2)</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;if is_prime(guess):</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ret = guess</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;done = True</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;else:</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;num_tries += 1</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if num_tries >= max_guesses:</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;done = True</br>
+              &nbsp;&nbsp;return ret</br>
+            </code>
+          </div>
+        </p>
+        <p>
+          The reason for calculating a <code>max_guesses</code> is that it is possible <em>no</em> primes exist in the range.
+          However, if we want a 99 percent cussess rate, then we need to define the max number of guesses allowed. 
+          Well, by the <a href="https://en.wikipedia.org/wiki/Prime_number_theorem">Prime Number Theorem</a>, the "probability" of a large number <code>n</code> being prime is <code>1/ln n</code>.
+          (Actually, the probability is either 1 or 0, but the function could more formally be said to be a measure of the density of primes in the neighborhood of the number.)
+          Then we note this function shrinks as <code>n</code> grows. 
+          We make a conservative approximation of the function by assuming it is constant over the range <code>[n1, n2]</code> as the value <code>1/ln n2</code>. Define this value as <code>p</code>.
+          The number of guesses needed then to find a prime in the range is then given by the value <code>ln .99 / ln (1-p)</code>. 
+          Say <code>n2 = 2^4096</code>, then the max number of guesses neeed is less than 30. 
+          Thus there is plenty of space in a range of 2^32 to find a prime near a number less than 2^4064.
+          Addtionally, this number grows at a rate less than <code>O(n)</code>.
+          This also gives us the source:<br/>
+          <div class="well">
+            <code>
+              #!/usr/bin/python<br/>
+              import math<br/>
+              <br/>
+              def get_max_guesses(n1, n2):<br/>
+              &nbsp;&nbsp;ret = -1<br/>
+              &nbsp;&nbsp;n = max(n1, n2)<br/>
+              &nbsp;&nbsp;p = 1 / math.log(n)<br/>
+              &nbsp;&nbsp;ret = math.log(0.99) / math.log(1-p)<br/>
+              &nbsp;&nbsp;ret *= 2<br/>
+              &nbsp;&nbsp;return ret<br/>
+            </code>
+          </div>
+          The final factor two is to make sure the actuall number needed is overshot.
+        </p>
+        <p>
+          Finally, we have to figure out the function <code>is_prime</code>. 
+          I use the Rabin Miller method, which I think <a href="https://en.wikipedia.org/wiki/Miller%E2%80%93Rabin_primality_test">Wikipedia</a> does a good job explaining. The source would be something like:<br/>
+          <div class="well">
+            <code>
+              #!/usr/bin/python</br>
+              import random</br>
+              </br>
+              def is_prime(n):</br>
+              &nbsp;&nbsp;ret = True</br>
+              &nbsp;&nbsp;max_guesses = 500</br>
+              &nbsp;&nbsp;d = n-1</br>
+              &nbsp;&nbsp;s = 0</br>
+              &nbsp;&nbsp;done = False</br>
+              &nbsp;&nbsp;while s % 2 == 0:</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;s /= 2</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;s += 1</br>
+              &nbsp;&nbsp;count = 0</br>
+              &nbsp;&nbsp;while count &lt; max_guesses and ret:</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;a = random.randrange(n-1)</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;wit = pow(a, d, n)</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;if wit != 1: # find if wit is a witness to n</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;pow_iter = 0</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;done = (wit != n-1)</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;while not done:</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if pow_iter == d - 1:</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;done = True</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ret = False</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;else:</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;pow_iter += 1</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;wit = (wit**2)%n</br>
+              &nbsp;&nbsp;&nbsp;&nbsp;count += 1</br>
+              &nbsp;&nbsp;return ret</br>
+            </code>
+          </div>
+        </p>
+        <p>
+          Basically this performs a check to find a "witness" that <code>n</code> is not prime. 
+          The program is probabalistic, meaning that it can fail.
+          (This is why, when you view the results of the conversion, it says the number is <em>probably</em> prime.)
+          One can know with certainty, but that requires checking every prime less than <code>2*(ln n)^2</code>. 
+          In our case, for a number of size 2^4096, then one would need to check more than one million primes. 
+          This is certainly tractable, but it is not great if someone is waiting for a page to load. 
+        </p>
+        <p>
+          The python code above can be found <a href="assets/find_prime.py">here</a>.
+        </p>
+        <h3>
+          Where is the source?
+        </h3>
+        <p>
+          <a href="">Here!</a>
         </p>
       </article>
       <footer class="page-footer blue center-on-small-only">
